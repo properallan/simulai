@@ -708,12 +708,17 @@ class Pipeline(BaseFramework):
         elif isinstance(input_data, xarray.core.dataarray.DataArray):
             input_data = input_data.data
 
+            if input_data.dtype.names:
+                self.input_vars_list = list(input_data.dtype.names)
+            else:
+                pass
+            data_format.append("dask")
+
         elif isinstance(input_data, dask.array.core.Array):
             if input_data.dtype.names:
                 self.input_vars_list = list(input_data.dtype.names)
             else:
                 pass
-
             data_format.append("dask")
 
         elif isinstance(input_data, h5py.Dataset):
