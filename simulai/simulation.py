@@ -17,6 +17,8 @@ import inspect
 import os
 import pickle
 import warnings
+import dask
+import xarray
 from collections import OrderedDict
 
 import h5py
@@ -703,6 +705,17 @@ class Pipeline(BaseFramework):
 
             data_format.append("numpy")
 
+        elif isinstance(input_data, xarray.core.dataarray.DataArray):
+            input_data = input_data.data
+
+        elif isinstance(input_data, dask.array.core.Array):
+            if input_data.dtype.names:
+                self.input_vars_list = list(input_data.dtype.names)
+            else:
+                pass
+
+            data_format.append("dask")
+
         elif isinstance(input_data, h5py.Dataset):
             if data_interval is not None:
                 n_samples = data_interval[1] - data_interval[0]
@@ -778,6 +791,12 @@ class Pipeline(BaseFramework):
         if data_format == "numpy":
             print("Executing a global pipeline.")
             self.pipeline_loop(input_data, target_data, reference_data, extra_kwargs)
+
+        if data_format == "dask":
+            print("Executing a dask pipeline.")
+            
+            self.pipeline_loop(input_data, target_data, reference_data, extra_kwargs)
+    
 
         # For ingestion via HDF5, the pipeline process is repeated for each
         # mini-batch
