@@ -21,6 +21,7 @@ from ._elm import ELM
 from ._esn import DeepEchoStateNetwork, EchoStateNetwork, WideEchoStateNetwork
 from ._extended_opinf import ExtendedOpInf
 from ._opinf import OpInf
+from ._weak_opinf import WeakOpInf
 from ._pinv import CompressedPinv
 
 # Back-propagation mechanisms

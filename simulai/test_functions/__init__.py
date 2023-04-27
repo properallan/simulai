@@ -1,0 +1,1 @@
+from ._test_functions import UniformTestFunction, rkhsFunction, AdaptiveTestFunction, UniformMultiscaleTestFunction
