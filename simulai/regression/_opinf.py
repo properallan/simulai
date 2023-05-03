@@ -543,8 +543,12 @@ class OpInf:
             input_data=input_data, target_data=target_data, forcing_data=forcing_data
         )
 
+        
         # Constructing the data-driven component of the left operator
-        D_o = D.T @ D
+        if len(D.shape) > 2:
+            D_o = np.array([Di.T @ Di for Di in D])
+        else:
+            D_o = D.T @ D
 
         # Constructing the right residual matrix
         R_matrix = D.T @ Res_matrix.T
