@@ -203,16 +203,23 @@ class AdaptiveTestFunction(TestFunction):
 
         return final_grid #y
 
+    """
     def build_V_Vp(self, t, x=None, params=None):
         V_, Vp_, grid_ = [], [], []
+        if len(x.shape)==1:
+            x = x[:,None]
+        print(x.shape[1])
         for i in range(x.shape[1]):
             V, Vp, grid = self._build_V_Vp(t=t, x=x[:,i])
-            V_.append(V)
-            Vp_.append(Vp)
-            grid_.append(grid)
-        return np.array(V_), np.array(Vp_), np.array(grid_)
-    
-    def _build_V_Vp(self, t, x=None, params=None):
+            print(V.shape, Vp.shape, grid.shape)
+            #V_.append(V)
+            #Vp_.append(Vp)
+            #grid_.append(grid)
+        #return np.array(V_), np.array(Vp_), np.array(grid_)
+        return np.array(V), np.array(Vp), np.array(grid)
+    """
+
+    def build_V_Vp(self, t, x, params=None):
         # Adaptive vectors V and Vp are built for each dimension
         if params == None:
             params = [self.s, self.K, self.p, 1]
@@ -496,6 +503,67 @@ class UniformTestFunction(TestFunction):
         #V_row = np.trapz(y=g(t_grid, t[a], t[b]), x=t_grid, dx=w[0])
         #Vp_row = np.trapz(y=-gp(t_grid, t[a], t[b]), x=t_grid, dx=w[0])
 
+        integration_rule='none'
+        if integration_rule == 'trapezoidal':
+            Dt = 1/2*(np.append(dts, [0]) + np.append([0], dts))
+        
+            V_row[:, t1:tk+1:gap] = g(t_grid, t[t1], t[tk])*Dt
+            Vp_row[:, t1:tk+1:gap] = -gp(t_grid, t[t1], t[tk])*Dt
+        elif integration_rule == 'simpsons':
+            h = t[1:]-t[:-1]
+            h = np.append(h, h[-1])
+            total_snapshots = len(t)
+            # 3/8
+            simpsons_rule_vector = h*3/8*(np.array([-2, *[-1 if not (m)%3 else 0 for m in range(1,total_snapshots-1)],-2 ])+3)
+            # 1/3
+            simpsons_rule_vector = h/3* np.array([1, *list(3+(-1)**np.arange(0,total_snapshots-2)),1])
+            Dt = simpsons_rule_vector
+
+            V_row[:, t1:tk+1:gap] = g(t_grid, t[t1], t[tk])*Dt[ t1:tk+1:gap]
+            Vp_row[:, t1:tk+1:gap] = -gp(t_grid, t[t1], t[tk])*Dt[ t1:tk+1:gap]
+        # elif integration_rule == 'quadrature':
+        #     V_row[:, t1:tk+1:gap] = integrate.quadrature(g, t[t1], t[tk], args=(t[t1],t[tk]))[0]
+        #     Vp_row[:, t1:tk+1:gap] = integrate.quadrature(-gp, t[t1], t[tk], args=(t[t1],t[tk]))[0]
+    
+        elif integration_rule == "scipy_simpsons": 
+            g_val = g(t_grid, t[t1], t[tk])
+            gp_val = gp(t_grid, t[t1], t[tk])
+            #V_row[:, t1:tk+1:gap] = integrate.simpson(g_val, x=t_grid)
+            #Vp_row[:, t1:tk+1:gap] = integrate.simpson(-gp_val, x=t_grid)
+            V_row[:,:] = integrate.simpson(g_val, x=t_grid)
+            Vp_row[:, :] = integrate.simpson(-gp_val, x=t_grid)
+
+        elif integration_rule == 'cumulative_trapezoid':
+            g_val = g(t_grid, t[t1], t[tk])
+            gp_val = gp(t_grid, t[t1], t[tk])
+            V_row[:, t1:tk+1:gap] = integrate.cumulative_trapezoid(g_val, t_grid, initial=g_val[0])
+            Vp_row[:, t1:tk+1:gap] = integrate.cumulative_trapezoid(-gp_val, t_grid, initial=-gp_val[0])
+        
+        elif integration_rule == 'old':
+            Dt = 1/2*(np.append(dts, [0]) + np.append([0], dts))
+
+            V_row[:, t1:tk+1:gap] = g(t_grid, t[t1], t[tk])*Dt
+            Vp_row[:, t1:tk+1:gap] = -gp(t_grid, t[t1], t[tk])*Dt
+            Vp_row[:, t1] = Vp_row[:, t1] - g(t[t1], t[t1], t[tk])
+            Vp_row[:, tk] = Vp_row[:, tk] + g(t[tk], t[t1], t[tk])
+
+        elif integration_rule == 'quadrature':
+
+            V_row[:, t1:tk+1:gap]=np.array([integrate.quadrature(g, t[t1], t[i],  args=(t[t1], t[tk]))[0] for i in range(1, len(t_grid)+1)])
+            Vp_row[:, t1:tk+1:gap]=np.array([integrate.quadrature(lambda x,a,b: -gp(x,a,b), t[t1], t[i],  args=(t[t1], t[tk]))[0] for i in range(1, len(t_grid)+1)])
+
+        elif integration_rule == 'quadrature_vec':
+            g_vec = lambda t: g
+            V_row[:, t1:tk+1:gap]=integrate.quad_vec(g, t[t1], t[tk],  args=(t[t1], t[tk]))[0] 
+            Vp_row[:, t1:tk+1:gap]=integrate.qua_vec(lambda x,a,b: -gp(x,a,b), t[t1], t[tk],  args=(t[t1], t[tk]))[0] 
+
+        elif integration_rule == 'romberg':
+            g_val = g(t_grid, t[t1], t[tk])
+            gp_val = gp(t_grid, t[t1], t[tk])
+            V_row[:, t1:tk+1:gap] = np.array([integrate.romb(g_val, t_grid[t1:t1+i+1]) for i in range(len(t_grid))])
+            Vp_row[:, t1:tk+1:gap] = np.array([integrate.romb(-gp_val,  t_grid[t1:t1+i+1]) for i in range(len(t_grid))])
+
+
         if pow != 0:
             if ord == 0:
                 scale_fac = np.linalg.norm( np.ndarray.flatten(V_row), nrm)
@@ -509,8 +577,11 @@ class UniformTestFunction(TestFunction):
 
 class UniformMultiscaleTestFunction(UniformTestFunction):
     def __init__(self, L:int=100, overlap:float=0.9, ghost_cells:int=0, **kwargs):
+        super(UniformTestFunction, self).__init__( **kwargs)
+        self.L = L
+        self.overlap = overlap
         self.sampling = 'uniform_multiscale'
-        super().__init__( L, overlap, ghost_cells, **kwargs)
+        self.ghost_cells = ghost_cells
 
 class rkhsFunction:
     def __init__(self, samples:int=100, **kwargs):

@@ -312,7 +312,6 @@ class RK4(ExplicitIntegrator):
 
         self.log_phrase += "Runge-Kutta 4th order "
 
-
 ### In construction
 # Runge-Kutta 7[8]
 class RKF78:
@@ -687,3 +686,203 @@ class ClassWrapper:
         print("Using jacobian: stiffness alert.")
 
         return self.class_instance.jacobian(input_data)
+
+class baseButcher:
+    """
+    Base class to construct Runge-Kutta integrators using a tableau(Butcher) form
+
+    c_1 | a_11 a_12 .  .  . a_1s
+    c_2 | a_21 a_22 .  .  . a_2s
+     .  |  .    .   .        .
+     .  |  .    .      .     .
+     .  |  .    .         .  .
+    c_s | a_s1 a_s2 .  .  . a_ss
+    ------------------------------
+        | b_1  b_2  .  .  . b_s
+        | bs_1 bs_2 .  .  . bs_s   # last row only used in adptative time-stepping schemes 
+ 
+    For a system of differential equations given by
+
+    dy/dt = rhs(y)
+
+    Each i-stage of explicit method take the form
+
+                     s   
+    k_i = rhs( dt * sum( a_ij * k_j ) )
+                     i
+
+    Each time step is then
+
+                          s  
+    y_(n+1) = y_n + dt * sum( b_i * k_i )
+                          i
+
+    For aptative time-step methods, the timestep is increased or decreased evaluating the error
+
+                  s                                      
+    error = dt * sum ( abs( b_i - bs_i)  * k_i ) = dt * ( y_(n+1) - ys_(n+1) ) 
+                  i  
+
+    The new timestep is chosing by comparir the error with a prescribed tol, if error >= tol:
+
+    dt_next = 0.9 * dt* (tol/error) ** 2
+
+    if the error < tol:
+    
+    dt_next = 0.9 * dt * (tol/error) ** (0.25)
+
+    References: 
+    Chowdhury, Abhinandan & Clayton, Sammie & Lemma, Mulatu. (2019). Numerical Solutions of Nonlinear Ordinary Differential Equations by Using Adaptive Runge-Kutta Method. JOURNAL OF ADVANCES IN MATHEMATICS. 17. 147-154. 10.24297/jam.v17i0.8408. 
+    Fehlberg, E. (1968). Classical fifth-, sixth-, seventh-, and eighth-order Runge-Kutta formulas with stepsize control. Washington: National Aeronautics and Space Administration; for sale by the Clearinghouse for Federal Scientific and Technical Information, Springfield, Va.
+    https://en.wikipedia.org/wiki/List_of_Runge–Kutta_methods
+    
+    """
+
+    def __init__(
+        self, 
+        right_operator: callable = None,
+        a: np.ndarray = None, 
+        b: np.ndarray = None, 
+        c: np.ndarray = None, 
+        bs: np.ndarray = None, 
+        adaptive: bool = False,
+        tol: float = 1e-4, 
+        ):
+        
+        self.a = a
+        self.b = b
+        self.c = c
+        self.bs = bs
+        self.adaptive = adaptive
+        self.tol = tol
+        self.right_operator = right_operator
+
+    def step(self, rhs, x0, dt, tol):
+        a, b, c, bs  = self.a, self.b, self.c, self.bs
+        x, t = x0, 0
+
+        # Stages
+        stages= len(b)
+        ks =  np.array([np.zeros_like(x0, dtype=x0.dtype) for s in range(stages)])      
+
+        # Compute stage derivatives k_j
+        for j in range(stages):
+            dx_j = np.zeros_like(x0, dtype=x0.dtype)
+            for l in range(j):
+                dx_j += dt*a[j, l]*ks[l]
+
+            ks[j] = rhs(x+ dx_j, t)
+
+        # Compute next time-step
+        dx = np.zeros_like(x0, dtype=x0.dtype)
+        for j in range(stages):
+            dx += dt*b[j]*ks[j]
+            
+        if bs is not None and tol is not None and self.adaptive:
+            dxs = np.zeros_like(x0, dtype=x0.dtype)
+            for j in range(stages):
+                dxs += dt*bs[j]*ks[j]
+
+            error = np.sum(abs(dxs - dx))
+
+            if error >= tol:
+                dt_ = 0.9*dt*(tol/error)**(0.20)
+                if t != t+dt_:
+                    dt = dt_
+            if error < tol:
+                dt = 0.9*dt*(tol/error)**(0.25)
+
+        return (x + dx)
+
+    def run(self, 
+        initial_state: np.ndarray = None, 
+        t: np.ndarray = None):
+        x0 = initial_state
+        rhs = self.right_operator.eval
+
+        t0 = t[0]
+        # Start time-stepping
+        xs = [x0]
+        ts = [t0]
+
+        dt = t[1] - t[0]
+        for i in range(len(t)-1):
+            if len(ts) > 1:
+                dt = ts[-1]-ts[-2]
+
+            t, x = ts[-1], xs[-1]
+            
+            x_new = self.step(rhs, x, dt, tol=self.tol)
+            t_new = t + dt
+
+            xs.append(x_new)
+            ts.append(t_new)
+
+        return np.array(xs)
+class BRK3(baseButcher):
+    def __init__(self, right_operator: callable=None,  **kwargs): 
+        a = np.array([[0,   0, 0],
+                      [1./3, 0, 0],
+                      [0, 2./3, 0]])
+        b = np.array([1./4, 0, 3./4])
+        c = np.array([0, 1./3, 2./3])
+
+        super().__init__(right_operator, a, b, c, **kwargs)
+
+class BRK23(baseButcher):
+    def __init__(self, right_operator: callable=None,  **kwargs): 
+        a  = np.array([[   0,    0, 0,    0],
+                       [1./2,    0, 0,    0],
+                       [   0, 3./4, 0,    0],
+                       [2./9, 1./3, 4./9, 0]])
+        b  = np.array([ 2./9, 1./3, 4./9,    0])
+        bs = np.array([7./24, 1./4, 1./3, 1./8])
+        c  = np.array([    0, 1./2, 3./4,   1.])
+        
+        super().__init__(right_operator, a, b, c, bs, **kwargs)
+
+class BRKF12(baseButcher):
+    def __init__(self, right_operator: callable=None,  **kwargs): 
+        a = np.array([[     0,        0,      0],
+                      [  1./3,        0,      0],
+                      [1./256, 255./256,      0]])
+        b  = np.array([1./512, 255./256, 1./512])
+        bs = np.array([1./256, 255./256,      0])
+        c  = np.array([     0,     1./2,     1.])
+        
+        super().__init__(right_operator, a, b, c, bs, **kwargs)
+
+class BRKF12(baseButcher):
+    def __init__(self, right_operator: callable=None,  **kwargs): 
+        a = np.array([[     0,        0,      0],
+                      [  1./3,        0,      0],
+                      [1./256, 255./256,      0]])
+        b  = np.array([1./512, 255./256, 1./512])
+        bs = np.array([1./256, 255./256,      0])
+        c  = np.array([     0,     1./2,     1.])
+        
+        super().__init__(right_operator, a, b, c, bs, **kwargs)
+
+class BRKF78(baseButcher):  
+    def __init__(self, right_operator: callable=None, **kwargs): 
+        a = np.array([  [           0,     0,       0,         0,          0,        0,           0,      0,       0,      0,       0,       0,        0],
+                        [       2./27,     0,       0,         0,          0,        0,           0,      0,       0,      0,       0,       0,        0],
+                        [       1./36, 1./12,       0,         0,          0,        0,           0,      0,       0,      0,       0,       0,        0],
+                        [       1./24,     0,    1./8,         0,          0,        0,           0,      0,       0,      0,       0,       0,        0],
+                        [       5./12,     0, -25./16,    25./16,          0,        0,           0,      0,       0,      0,       0,       0,        0],
+                        [       1./20,     0,       0,      1./4,       1./5,        0,           0,      0,       0,      0,       0,       0,        0],
+                        [    -25./108,     0,       0,  125./108,    -65./27,  125./54,           0,      0,       0,      0,       0,       0,        0],
+                        [     31./300,     0,       0,         0,    61./225,    -2./9,     13./900,      0,       0,      0,       0,       0,        0],
+                        [          2.,     0,       0,    -53./6,    704./45,  -107./9,      67./90,     3.,       0,      0,       0,       0,        0],
+                        [    -91./108,     0,       0,   23./108,  -976./135,  311./54,     -19./60,  17./6,  -1./12,      0,       0,       0,        0],
+                        [  2383./4100,     0,       0, -341./164, 4496./1025, -301./82,  2133./4100, 45./82, 45./164, 18./41,       0,       0,        0],
+                        [      3./205,     0,       0,         0,          0,   -6./41,     -3./205, -3./41,   3./41,  6./41,       0,       0,        0],
+                        [ -1777./4100,     0,       0, -341./164, 4496./1025, -289./82,  2193./4100, 51./82, 33./164, 12./41,       0,       1.,       0]])
+
+        b  =   np.array([     41./840,     0,       0,         0,          0,  34./105,      9./35,  9./35,  9./280, 9./280, 41./840,       0,       0])
+
+        bs =   np.array([           0,     0,       0,         0,          0,  34./105,      9./35,  9./35,  9./280, 9./280,       0, 41./840, 41./840])
+        
+        c =    np.array([           0, 2./27,    1./9,      1./6,      5./12,     1./2,       5./6,   1./6,    2./3,   1./3,      1.,       0,      1.])
+
+        super().__init__(right_operator, a, b, c, bs, **kwargs)
