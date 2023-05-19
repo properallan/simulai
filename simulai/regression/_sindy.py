@@ -31,7 +31,4 @@ except:
         "mpi4py is not installed. If you want to execute MPI jobs, we recommend you install it."
     )
 
-class SINDy:
-    def __init__(self):
-        warnings.warn(f"Not implemented yet.")
-        raise NotImplementedError
+        
