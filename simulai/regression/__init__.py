@@ -23,6 +23,7 @@ from ._extended_opinf import ExtendedOpInf
 from ._opinf import OpInf
 from ._weak_opinf import WeakOpInf
 from ._weak_sindy import WeakSINDy
+from ._sindy import SINDy
 from ._pinv import CompressedPinv
 
 # Back-propagation mechanisms

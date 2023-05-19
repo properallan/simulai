@@ -359,11 +359,17 @@ class WeakSINDy(SINDy):
             Vp[k, a:b+1] = Vp_row
     
         return V, Vp
-
     
     def solve_linear_system(self, G, b):
-        self.solver.fit(G, b)
-        return self.solver.coef_
+        if isinstance(self.solver, str):
+            if self.solver.upper() == 'PINV':
+                w = np.linalg.pinv(G) @ b
+            elif self.solver.upper() == 'LSTSQ':
+                w = np.linalg.lstsq(G, b)[0]
+        else:
+            self.solver.fit(G, b)
+            w = self.solver.coef_
+        return w
     """
     def simulate(self, x0, t_span, t_eval):
         #print(self.tags)
