@@ -2,6 +2,7 @@ import sympy as sp
 from simulai.math.integration import BRKF78
 from scipy import integrate
 from sklearn.preprocessing import PolynomialFeatures
+from scipy.special import legendre
 
 
 class SSINDy:
@@ -70,7 +71,6 @@ class SSINDy:
                 
             print(expr)
 
-from scipy.special import legendre
 
 class WeakSSINDy(SSINDy):
     """
