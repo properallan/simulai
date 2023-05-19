@@ -31,7 +31,6 @@ except:
         "mpi4py is not installed. If you want to execute MPI jobs, we recommend you install it."
     )
 
-<<<<<<< HEAD
 from scipy.linalg import block_diag
 
 from scipy.integrate import odeint
@@ -113,6 +112,3 @@ class SINDy:
 
         for key, value in kwargs.items():
             setattr(self, key, value)
-=======
-        
->>>>>>> ed1f13c744dd38cf9f304fb36425654a6114404f
