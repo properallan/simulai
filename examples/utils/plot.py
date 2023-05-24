@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from math import ceil
 
-def anim_2D(data, title, xlabel='NX', ylabel='NY', args={}, n_columns=None, max_tstep=-1, interval=100):
+def anim_2D(data, title, xlabel='NX', ylabel='NY', args={}, n_columns=None, max_tstep=-1, interval=100, min_val=None, max_val=None, figsize=None, fig=None, ax=None):
     """
     Animate 2D data.
 
@@ -38,7 +38,7 @@ def anim_2D(data, title, xlabel='NX', ylabel='NY', args={}, n_columns=None, max_
     if max_tstep is None or max_tstep < 0:
         max_tstep = data[0].shape[0]
     i=0
-    fig, ax, im = plot_2D(data, title, xlabel, ylabel, args, n_columns, i)
+    fig, ax, im = plot_2D(data, title, xlabel, ylabel, args, n_columns, i, fig, ax, min_val, max_val, figsize)
     
     def animate(i):
         for j, imi in enumerate(im):
@@ -49,7 +49,7 @@ def anim_2D(data, title, xlabel='NX', ylabel='NY', args={}, n_columns=None, max_
     anim = FuncAnimation(fig, animate, interval=interval, frames=max_tstep)
     return anim
 
-def plot_2D(data, title, xlabel='NX', ylabel='NY', args={}, n_columns=None, tstep=-1, fig=None, ax=None, min_val=None, max_val=None):
+def plot_2D(data, title, xlabel='NX', ylabel='NY', args={}, n_columns=None, tstep=-1, fig=None, ax=None, min_val=None, max_val=None, figsize=None):
     """
     Plot 2D data.
 
@@ -93,22 +93,29 @@ def plot_2D(data, title, xlabel='NX', ylabel='NY', args={}, n_columns=None, tste
     n_rows = int(np.ceil(n_data/n_columns))
 
     if fig is None and ax is None:
-        fig, ax = plt.subplots(n_rows, n_columns, figsize=(5.0*n_columns, n_rows*5.3))
+        if figsize is None:
+            figsize = (5.0*n_columns, n_rows*5.3)
+        fig, ax = plt.subplots(n_rows, n_columns, figsize=figsize)
         
         if n_columns == 1:
             ax = np.array([ax]).T
             
     if n_rows == 1: ax = [ax]
 
-    if min_val is None:
-        min_val = np.amin(data[0])
-    if max_val is None:
-        max_val = np.amax(data[0])
-
     vv = 0
     im = []
+
+    if min_val is None:
+        min_val = [np.amin(data[0])]*len(data)
+    if max_val is None:
+        max_val = [np.amax(data[0])]*len(data)
     
     for i in  np.arange(n_rows):
+        if min_val[vv] is None:
+            min_val[vv] = np.amin(data[0])
+        if max_val[vv] is None:
+            max_val[vv] = np.amax(data[0])
+            
         for j in np.arange(n_columns):
             if j == 0:
                 ax[i][j].set_ylabel(ylabel, fontsize=12)
@@ -118,7 +125,7 @@ def plot_2D(data, title, xlabel='NX', ylabel='NY', args={}, n_columns=None, tste
             ax[i][j].tick_params(axis='y', labelsize=12)
 
             if vv < n_data:
-                im_= ax[i][j].imshow(data[vv][tstep,...].T[::-1], vmin=min_val, vmax=max_val,  **args)
+                im_= ax[i][j].imshow(data[vv][tstep,...].T[::-1], vmin=min_val[vv], vmax=max_val[vv],  **args)
                 im.append(im_)
                 cbar = fig.colorbar(im[vv], ax=ax[i][j], location='top', fraction=0.046, pad=0.04)
                 cbar.ax.set_xlabel(f'{title[vv]}', fontsize=12)
@@ -233,6 +240,9 @@ def plot_latent( data:list=[],
                  ax=None,
                  vlines=None,
                  vlines_kwargs=dict(),
+                 xlabel='tsteps',
+                 label_ncol=2,
+                 label_position=(-0.02, 1.2),
                  **kwargs):
 
     if 'ncols' not in fig_kwargs.keys():
@@ -274,7 +284,7 @@ def plot_latent( data:list=[],
                 ax[i][j].set_title(rf" Variable $x_{str({vv+1})}$")
                 ax[i][j].grid(True)
                 if i == (n_rows-1):
-                    ax[i][j].set_xlabel('tstep')
+                    ax[i][j].set_xlabel(xlabel)
                 if vlines is not None:
                     for vline, vline_kwargs in zip(vlines, vlines_kwargs):
                         ax[i][j].vlines(vline, *ax[i][j].get_ylim(), **vline_kwargs )
@@ -283,7 +293,7 @@ def plot_latent( data:list=[],
             vv += 1
 
     #fig.legend(bbox_to_anchor=(0, -0.04))
-    ax[0][0].legend(loc='lower left', bbox_to_anchor=(-0.02, 1.15), fancybox=True, shadow=True, ncol=2)
+    ax[0][0].legend(loc='lower left', bbox_to_anchor=label_position, fancybox=True, shadow=True, ncol=label_ncol)
     #plt.legend(bbox_to_anchor=(0, -0.04), fancybox=True, shadow=True, borderaxespad=0)
     plt.tight_layout()
     #plt.show()

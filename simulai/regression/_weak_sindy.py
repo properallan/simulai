@@ -96,11 +96,44 @@ class WeakSINDy(SINDy):
 
         self.eval_op = self._eval
 
-    def build_b(self, Vp, x, RT):
-        if self.useGLS > 0:
-            b = lstsq(RT, Vp.dot(x))[0]
+    def print(self, weights=None, precision=2, names=None):
+
+        if weights is None:
+            weights = self.coef
+
+        #if names is None:
+        #    names = [f'x{i}' for i in range(weights.shape[1])]
+        vars = [f'x{i}' for i in range(weights.shape[1])]
+        if names is not None:
+            new_vars = names
         else:
-            temp = Vp.dot(x)
+            new_vars = vars
+        names = self.feature_library.get_feature_names_out(names)
+        
+        for i, wi in enumerate(weights.T):
+            
+            expr = [f'{wij:+.{precision}f} {n.replace(" ","*")}' for n,wij in zip(names,wi) if f'{abs(wij):.{precision}f}' != f'{abs(0.00):.{precision}f}']
+            expr = [e if not e.split(' ')[-1].isnumeric() else ''.join(e.split(' ')[:-1]) for e in expr]
+            expr = [e.replace('-','- ') if i > 0 else e.removeprefix('+') for i,e in enumerate(expr)]
+            expr = [e.replace('+','+ ') if i > 0 else e.removeprefix('+') for i,e in enumerate(expr)]
+            expr = ' '.join(expr)
+            expr = f'd{vars[i]}_dt = {expr}'
+            
+            for var, new_var in zip(vars,new_vars):
+                expr = expr.replace(var, new_var)
+                
+            print(expr)
+
+    def build_b(self, Vp, x, RT):
+
+        integral = Vp.dot(x) 
+        #for k in range(len(integral)):
+        #    integral[k] += self.test_function.basis(k)(-1)*x[-1] - #self.test_function.basis(k)(0)*x[0]
+
+        if self.useGLS > 0:
+            b = lstsq(RT, integral)[0]
+        else:
+            temp = integral
             b = RT.T*temp
 
         # ridiculous simple
@@ -108,10 +141,13 @@ class WeakSINDy(SINDy):
         return b
 
     def build_G(self, V, Theta_0, RT):
+
+        integral = V.dot(Theta_0)
+
         if self.useGLS > 0:
-            G = lstsq(RT, V.dot(Theta_0))[0]        
+            G = lstsq(RT, integral )[0]        
         else:
-            G = np.multiply(V.dot(Theta_0), RT)
+            G = np.multiply(integral, RT)
         # ridiculous simple
         # G = V @ Theta_0
         return G
@@ -185,6 +221,7 @@ class WeakSINDy(SINDy):
         else:
             M_diag = np.array([])
 
+        bs = []
         for i in range(n):
             if self.test_function.sampling == 'uniform_multiscale':
                 self.test_function.L = Ls[i]
@@ -224,12 +261,15 @@ class WeakSINDy(SINDy):
             else:
                 w_sparse_temp = self.solve_linear_system(G, b.T)
                 w_sparse[:, i] = np.ndarray.flatten(w_sparse_temp)
+            
+            bs.append(b)
 
         self.coef = w_sparse
         self.mats = mats
         self.ts_grids = ts_grids
         self.G = G
         self.b = b
+        #self.bs = np.array(bs)
 
     def build_Theta(self, X):
         self.Theta_0 = self.feature_library.fit_transform(X)
