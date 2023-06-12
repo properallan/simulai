@@ -630,6 +630,9 @@ class LegendreBasis(Legendre):
     def basis(self, k):
         return self.legendre.basis(k)
     
+    def deriv(self):
+        return self.legendre.deriv()
+    
     def integration_vectors(self, t, k):
         N = len(t)
         Omega = np.linspace(-1, 1, N)

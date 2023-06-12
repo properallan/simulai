@@ -6,7 +6,6 @@ from scipy.special import legendre
 import numpy as np
 from typing import Union
 from pysindy import BaseOptimizer
-
 class SSINDy:
     """
     Base Class for spectral SINDy (vanilla finite differences)
@@ -87,6 +86,7 @@ class SSINDy:
                 expr = expr.replace(var, new_var)
                 
             print(expr)
+
 
 
 class WeakSSINDy(SSINDy):
@@ -170,11 +170,70 @@ class WeakSSINDy(SSINDy):
         
         #return  - (self._test_function_deriv(time, K) @ input_data) + (self._test_function(time, K)[:,-1,None] @ input_data[-1][None,:]) -(self._test_function(time, K)[:,0,None] @ input_data[0][None,:])
 
-
-from scipy import integrate
-
-
 class SpectralWSINDy(WeakSSINDy):
+    """New Implementation using Numpy instead of Sympy"""
+    def __ini__(self, basis_function, test_function, solver):
+        
+        self.basis_function = basis_function
+        self.test_function = test_function
+        self.solver = solver
+
+    def _test_function(self, input_data, K):
+        test = np.array([
+            self.test_function.basis(i)(input_data) for i in range(K) ])
+        return test
+
+    def _test_function_deriv(self, input_data, K):
+        test = np.array([
+            self.test_function.basis(i).deriv()(input_data) for i in range(K) ])
+        return test
+
+    def build_b(self, input_data, time):
+        K = self.test_function.K
+
+        Omega = np.linspace(-1,1, time.shape[0])
+        test_functions_deriv = self._test_function_deriv(Omega, K)
+        test_functions = self._test_function(Omega, K)
+
+        D = input_data.shape[1]
+        b = np.zeros((K, D))
+        for k in range(K): 
+            #test_function = self.test_function.fit(Omega, input_data[:,d], deg=K)
+            for d in range(D):
+                b[k, d] = - integrate.simpson( 
+                    #input_data[:,d] * test_function.basis(k).deriv()(Omega)
+                    #+ input_data[-1,d]*test_function.basis(k)(Omega[-1]) \
+                    #- input_data[0,d]*test_function.basis(k)(Omega[0])
+                    input_data[:,d] * test_functions_deriv[k] , Omega ) \
+                    + input_data[-1,d]*test_functions[k][-1] \
+                    - input_data[0,d]*test_functions[k][0]
+        return b
+    
+    def build_G(self, input_data, time):
+        K = self.test_function.K
+
+        Omega = np.linspace(-1,1, time.shape[0])
+        test_functions = self._test_function(Omega, K)
+        basis_functions = self._basis_function(input_data)
+        
+        J = self._basis_function(input_data[0]).shape[1]
+        G = np.zeros((K,J))
+
+        for k in range(K):
+            #test_function = self.test_function.fit(Omega, basis_functions[:,j], deg=K)
+            for j in range(J):
+                #G[k,j] = integrate.simpson( basis_functions[:,j] * test_function.basis(k)(Omega), time)
+                G[k,j] = integrate.simpson( basis_functions[:,j] * test_functions[k], time)
+
+        return G
+    
+    def fit(self, input_data, time):
+        self.b = self.build_b(input_data, time)
+        self.G = self.build_G(input_data, time)
+
+        self.weights = self.solve_linear_system(self.G, self.b)
+
+class MultiSpectralWSINDy(WeakSSINDy):
     """New Implementation using Numpy instead of Sympy"""
     def __ini__(self, basis_function, test_function, solver):
         
@@ -191,9 +250,10 @@ class SpectralWSINDy(WeakSSINDy):
         test_function_deriv_k = [self.test_function.basis(k).deriv()(Omega) for k in range(K)]
         test_function_k = [self.test_function.basis(k)(Omega) for k in range(K)]
 
-        for d in range(D):
+
+        for k in range(K): 
             #test_function = self.test_function.fit(Omega, input_data[:,d], deg=K)
-            for k in range(K): 
+            for d in range(D):
                 b[k, d] = - integrate.simpson( 
                     #input_data[:,d] * test_function.basis(k).deriv()(Omega)
                     #+ input_data[-1,d]*test_function.basis(k)(Omega[-1]) \
@@ -213,9 +273,10 @@ class SpectralWSINDy(WeakSSINDy):
 
         test_function_k = [self.test_function.basis(k)(Omega) for k in range(K)]
 
-        for j in range(J):
+
+        for k in range(K):
             #test_function = self.test_function.fit(Omega, basis_functions[:,j], deg=K)
-            for k in range(K):
+            for j in range(J):
                 #G[k,j] = integrate.simpson( basis_functions[:,j] * test_function.basis(k)(Omega), time)
                 G[k,j] = integrate.simpson( basis_functions[:,j] * test_function_k[k], time)
 
