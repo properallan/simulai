@@ -5,6 +5,8 @@ from scipy import interpolate
 import scipy
 from scipy.optimize import brentq
 
+from numpy.polynomial import Legendre
+
 import numba
 
 @numba.njit
@@ -614,3 +616,65 @@ class rkhsFunction:
     #        #Vp[i, :] = Vp[i, :]*w
     #    
     #    return V, Vp
+
+
+class LegendreBasis(Legendre):
+    def __init__(self, K):
+        self.legendre = Legendre(np.ones(K))
+        self.K = K
+        self.sampling = 'uniform'
+    
+    def __call__(self, x):
+        return self.legendre(x)
+
+    def basis(self, k):
+        return self.legendre.basis(k)
+    
+    def integration_vectors(self, t, k):
+        N = len(t)
+        Omega = np.linspace(-1, 1, N)
+        V_row = np.zeros((1,N))
+        Vp_row = np.zeros((1,N))
+
+        dts = np.diff(t)
+        w = 1/2.*(np.append(dts, [0]) + np.append([0], dts))
+        
+        V_row[:, :] = self.legendre.basis(k)(Omega)*w
+        Vp_row[:, :]= -self.legendre.basis(k).deriv()(Omega)*w
+        Vp_row[:, 0] = Vp_row[:, 0] - self.legendre.basis(k)(Omega[0])
+        Vp_row[:, -1] = Vp_row[:, -1] + self.legendre.basis(k)(Omega[-1])
+
+        return V_row, Vp_row
+
+    def build_V_Vp(self, t, x=None):
+
+        V = np.zeros((self.K, t.shape[0]))
+        Vp = np.zeros((self.K, t.shape[0]))
+
+        for k in range(self.K):
+            V_row, Vp_row = self.integration_vectors(t, k)
+            V[k, :] = V_row
+            Vp[k, :] = Vp_row
+
+        return V, Vp, t
+    
+#class LegendreBasis(Legendre):
+#    def __init__(self, K):
+#        super().__init__(np.ones(K))
+#        self.K = K
+    
+    #@property
+    #def __call__(self):
+    #    return self.legendre
+
+    #@property
+    #def basis(self):
+    #    return self.legendre.basis
+    
+    #@property
+    #def deriv(self):
+    #    return self.legendre.deriv
+    
+    #@property
+    #def fit(self):
+    #    return self.legendre.fit

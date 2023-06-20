@@ -14,12 +14,20 @@ def sliceDataAlongAxis(data, fractions, axis):
     slices = ()
     for i, fraction in enumerate(fractions):
         fractions_[i] = int(data_size * fraction) 
+
         if fractions_[i] != 0 and not remain_added:
             fractions_[i] += remain
             remain_added = True
+
         if i > 0:
+            
+            #if fractions_[i-1] > 0:
+            #    fractions_[i-1] -= 1
+
             fractions_[i] += fractions_[i-1]
-            slice = data.take(range(fractions_[i-1], fractions_[i]), axis)    
+                
+            slice = data.take(range(fractions_[i-1], fractions_[i]), axis)   
+            
         else:
             slice = data.take(range(0, fractions_[i]), axis)    
         slices += (slice,)
