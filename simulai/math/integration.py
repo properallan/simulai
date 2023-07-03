@@ -551,6 +551,9 @@ class LSODA:
         current_state: np.ndarray = None,
         t: np.ndarray = None,
         forcing: np.ndarray = None,
+        reference_data : np.ndarray = None,
+        max_error : float = 1e3,
+        **kwargs,
     ) -> np.ndarray:
         """
 
@@ -562,6 +565,12 @@ class LSODA:
             The time points at which to solve the system.
         forcing : np.ndarray, optional
             The forcing terms to use in the differential equation.
+        reference_data : np.ndarray, optional
+            The reference data to use for integration error evaluation.
+        max_error : float, optional
+            The maximum error allowed for the integration.
+        kwargs : dict, optional
+            Additional keyword arguments to pass to the ODE solver.
 
         Returns
         -------
@@ -574,7 +583,8 @@ class LSODA:
         ), "When running with forcing, a forcing array must be provided."
 
         if hasattr(self.right_operator, "jacobian"):
-            print("Integrating using external Jacobian function")
+            if self.right_operator.jacobian is not None:    
+                print("Integrating using external Jacobian function")
             Jacobian = self.right_operator.jacobian
         else:
             print("Numerical Jacobian")
@@ -584,21 +594,37 @@ class LSODA:
         self.right_operator.set(forcing=forcing)
 
         solutions = [current_state]
-
+        error = 0
         for step in range(epochs):
-            solution = odeint(
-                self.right_operator.eval_forcing,
-                current_state,
-                t[step : step + 2],
-                args=(step,),
-                Dfun=Jacobian,
-            )
 
+            if reference_data is not None:
+                error = np.abs(current_state - reference_data[step])
+            
+            if np.any(error > max_error):
+                #
+                error_msg = "Integration error too large, using previous step value as current solution."
+
+                solution = current_state[None, :]
+                if step < epochs - 1:
+                    solution = np.vstack([solution, solution])
+                #print(solution.shape)
+            else:
+                error_msg = ""
+                solution = odeint(
+                    self.right_operator.eval_forcing,
+                    current_state,
+                    t[step : step + 2],
+                    args=(step,),
+                    Dfun=Jacobian, **kwargs
+                )
+                #print('shape of solution')
+                #print(solution.shape)
+            
             solutions.append(solution[1:])
             current_state = solution[-1]
 
             sys.stdout.write(
-                "\r {}, iteration: {}/{}".format(self.log_phrase, step + 1, epochs)
+                "\r {}, iteration: {}/{} {}".format(self.log_phrase, step + 1, epochs, error_msg)
             )
             sys.stdout.flush()
 

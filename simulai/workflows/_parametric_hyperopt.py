@@ -23,6 +23,40 @@ try:
 except:
     print("It is necessary to configure it.")
 
+import operator
+
+class ThresholdReachedCallback():
+    """Threshold Reached Callback for Optuna"""
+
+    def __init__(self, threshold, direction: str = "minimize") -> None:
+        self.direction = direction
+        self.threshold = threshold
+        self._callback_called = False
+
+        if self.direction == "minimize":
+            self._operator = operator.lt
+            self._score = np.inf
+        elif self.direction == "maximize":
+            self._operator = operator.gt
+            self._score = -np.inf
+        else:
+            raise ValueError(f"Expected direction value from ['minimize', 'maximize'], but got {self.direction}")
+
+    def __str__(self) -> str:
+        if self._callback_called:
+            return f"Objective {self.direction}d and stopped after reaching a threshold value of {self.threshold}"
+
+        return super().__str__()
+
+    def __call__(self, study: optuna.Study, trial: optuna.Trial) -> None:
+        """Stop the optimization when threshold value is crossed"""
+
+        self._callback_called = True
+
+        if self._operator(study.best_value, self.threshold):
+            study.stop()
+
+        return
 
 # Searching up for a set of scalar parameters
 class ParamHyperOpt:
@@ -266,7 +300,7 @@ class ParamHyperOpt:
             objective_function=self.objective_function,
         )
 
-    def optimize(self, n_trials: int = None):
+    def optimize(self, n_trials: int = None, callbacks: list = None ):
         assert self.there_are_datasets == True, "The datasets were not informed."
 
         assert callable(self.objective_function), (
@@ -274,7 +308,7 @@ class ParamHyperOpt:
             f" but received {type(self.objective_function)}"
         )
 
-        self.study.optimize(self._objective_optuna_wrapper, n_trials=n_trials)
+        self.study.optimize(self._objective_optuna_wrapper, n_trials=n_trials, callbacks=callbacks)
 
     def retrain_best_trial(self):
         if not hasattr(self.trainer_template, "params"):
